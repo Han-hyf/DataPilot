@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +42,12 @@ class SQLiteDatabase:
             raise DatabaseError("数据库中没有可用的数据表。")
         return "\n\n".join(row["sql"] for row in rows)
 
-    def execute(self, sql: str, max_rows: int = 100) -> list[dict[str, Any]]:
+    def execute(
+        self,
+        sql: str,
+        max_rows: int = 100,
+        timeout_seconds: float = 3.0,
+    ) -> list[dict[str, Any]]:
         statement = sql.strip().rstrip(";").strip()
         if not statement:
             raise DatabaseError("模型没有生成 SQL。")
@@ -49,12 +55,21 @@ class SQLiteDatabase:
             raise DatabaseError("V0 仅允许执行一条 SQL 语句。")
 
         with self._connect() as connection:
+            deadline = time.monotonic() + timeout_seconds
+            connection.set_progress_handler(
+                lambda: int(time.monotonic() >= deadline),
+                1_000,
+            )
             try:
                 cursor = connection.execute(statement)
                 if cursor.description is None:
                     raise DatabaseError("只允许执行返回结果的只读查询。")
                 rows = cursor.fetchmany(max_rows + 1)
             except sqlite3.Error as exc:
+                if "interrupted" in str(exc).lower():
+                    raise DatabaseError(
+                        f"SQL 执行超过 {timeout_seconds:g} 秒，已终止。"
+                    ) from exc
                 raise DatabaseError(f"SQL 执行失败：{exc}") from exc
 
         if len(rows) > max_rows:

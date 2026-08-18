@@ -35,3 +35,16 @@ def test_database_is_read_only(sample_database):
 def test_multiple_statements_are_rejected(sample_database):
     with pytest.raises(DatabaseError, match="一条 SQL"):
         sample_database.execute("SELECT 1; SELECT 2")
+
+
+def test_long_running_query_is_interrupted(sample_database):
+    sql = """
+    WITH RECURSIVE counter(value) AS (
+        VALUES (1)
+        UNION ALL
+        SELECT value + 1 FROM counter
+    )
+    SELECT SUM(value) FROM counter
+    """
+    with pytest.raises(DatabaseError, match="已终止"):
+        sample_database.execute(sql, timeout_seconds=0.001)

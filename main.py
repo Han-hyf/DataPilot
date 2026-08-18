@@ -10,6 +10,7 @@ from pathlib import Path
 from agent import DataPilot
 from database import DatabaseError
 from llm import LLMError
+from sql_guard import SQLValidationError
 
 
 DEFAULT_DATABASE = Path(__file__).parent / "data" / "Chinook_Sqlite.sqlite"
@@ -27,7 +28,7 @@ def main() -> int:
     args = parse_args()
     try:
         result = DataPilot(args.database).ask(args.question)
-    except (ValueError, DatabaseError, LLMError) as exc:
+    except (ValueError, DatabaseError, LLMError, SQLValidationError) as exc:
         print(f"错误：{exc}", file=sys.stderr)
         return 1
     except Exception as exc:
