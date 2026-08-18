@@ -1,14 +1,18 @@
 # DataPilot
 
-DataPilot 是一个逐步演进的智能数据分析 Agent。V0 实现最小可用链路：
+DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V1 使用 LangGraph 显式编排最小可用链路：
 
 ```text
-自然语言问题 → DeepSeek 生成 SQLite 查询 → 执行真实查询 → 生成中文答案
+自然语言问题 → 获取 Schema → DeepSeek 生成 SQL → 执行真实查询 → 生成中文答案
 ```
 
-当前版本刻意不引入 LangGraph、Schema RAG、MCP 或 Web API，以便先验证 Text2SQL 核心能力。
+```text
+START → get_schema → generate_sql → execute_sql → analyze_result → END
+```
 
-## V0 快速开始
+当前版本刻意不引入 Schema RAG、MCP 或 Web API。V1 只负责把 V0 重构为可观察、可扩展的状态图；SQL 校验分支和错误修复循环将在后续版本加入。
+
+## V1 快速开始
 
 要求 Python 3.11+。
 
@@ -37,10 +41,10 @@ python main.py "销售额最高的5位客户是谁？" --show-rows
 python -m pytest
 ```
 
-## V0 文件
+## V1 文件
 
 - `main.py`：命令行入口
-- `agent.py`：Text2SQL 管道
+- `agent.py`：LangGraph State、节点、边和 Text2SQL 工作流
 - `llm.py`：DeepSeek API 调用
 - `database.py`：只读 SQLite Schema 获取与查询执行
 - `scripts/download_chinook.py`：下载官方 Chinook 数据库
