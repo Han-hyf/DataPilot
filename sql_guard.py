@@ -23,17 +23,18 @@ class ValidationResult:
 class SQLGuard:
     """Allow one SQLite query and normalize its top-level row limit."""
 
-    def __init__(self, max_rows: int = 100) -> None:
+    def __init__(self, max_rows: int = 100, dialect: str = "sqlite") -> None:
         if max_rows < 1:
             raise ValueError("max_rows 必须大于 0。")
         self.max_rows = max_rows
+        self.dialect = dialect
 
     def validate(self, sql: str) -> ValidationResult:
         if not sql.strip():
             return ValidationResult(False, error="模型没有生成 SQL。")
 
         try:
-            statements = sqlglot.parse(sql, read="sqlite")
+            statements = sqlglot.parse(sql, read=self.dialect)
         except ParseError as exc:
             return ValidationResult(False, error=f"SQL 语法无效：{exc}")
 
@@ -59,7 +60,7 @@ class SQLGuard:
             if int(expression.this) > self.max_rows:
                 statement = statement.limit(self.max_rows)
 
-        return ValidationResult(True, sql=statement.sql(dialect="sqlite"))
+        return ValidationResult(True, sql=statement.sql(dialect=self.dialect))
 
     def require_valid(self, sql: str) -> str:
         result = self.validate(sql)

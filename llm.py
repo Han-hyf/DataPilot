@@ -27,31 +27,41 @@ class DeepSeekLLM:
         )
 
     def _json_completion(self, messages: list[dict[str, str]]) -> dict[str, Any]:
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            response_format={"type": "json_object"},
-            temperature=0,
-            max_tokens=1200,
-        )
-        content = response.choices[0].message.content
-        if not content:
-            raise LLMError("模型返回了空响应。")
-        try:
-            result = json.loads(content)
-        except json.JSONDecodeError as exc:
-            raise LLMError("模型没有返回有效 JSON。") from exc
-        if not isinstance(result, dict):
-            raise LLMError("模型响应必须是 JSON 对象。")
-        return result
+        last_error = "模型返回了空响应。"
+        for _ in range(2):
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                response_format={"type": "json_object"},
+                temperature=0,
+                max_tokens=1200,
+            )
+            content = response.choices[0].message.content
+            if not content:
+                continue
+            candidate = content.strip()
+            if not candidate.startswith("{") or not candidate.endswith("}"):
+                start = candidate.find("{")
+                end = candidate.rfind("}")
+                if start >= 0 and end > start:
+                    candidate = candidate[start : end + 1]
+            try:
+                result = json.loads(candidate)
+            except json.JSONDecodeError:
+                last_error = "模型没有返回有效 JSON。"
+                continue
+            if isinstance(result, dict):
+                return result
+            last_error = "模型响应必须是 JSON 对象。"
+        raise LLMError(f"{last_error} 已重试 2 次。")
 
-    def generate_sql(self, question: str, schema: str) -> str:
+    def generate_sql(self, question: str, schema: str, dialect: str) -> str:
         result = self._json_completion(
             [
                 {
                     "role": "system",
                     "content": (
-                        "你是 SQLite 数据分析专家。根据给定 schema 和用户问题生成一条只读查询。"
+                        f"你是 {dialect} 数据分析专家。根据给定 schema 和用户问题生成一条只读查询。"
                         "只能使用 schema 中存在的表和字段；禁止修改数据；结果默认不超过 100 行。"
                         '必须仅输出 JSON，例如：{"sql":"SELECT ... LIMIT 100"}。'
                     ),
@@ -73,13 +83,14 @@ class DeepSeekLLM:
         schema: str,
         sql: str,
         error: str,
+        dialect: str,
     ) -> str:
         result = self._json_completion(
             [
                 {
                     "role": "system",
                     "content": (
-                        "你是 SQLite SQL 修复专家。根据数据库 schema 和真实执行错误修复查询。"
+                        f"你是 {dialect} SQL 修复专家。根据数据库 schema 和真实执行错误修复查询。"
                         "保持用户原始意图，只能生成一条只读查询，不得修改数据库。"
                         "只使用 schema 中存在的表和字段，不要解释。"
                         '必须仅输出 JSON，例如：{"sql":"SELECT ... LIMIT 100"}。'

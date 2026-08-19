@@ -8,16 +8,17 @@ from sql_guard import SQLValidationError
 
 
 class FakeLLM:
-    def generate_sql(self, question, schema):
+    def generate_sql(self, question, schema, dialect):
         assert question == "有多少用户？"
         assert "users" in schema
+        assert dialect == "sqlite"
         return "SELECT COUNT(*) AS count FROM users"
 
     def analyze(self, question, sql, rows):
         assert rows == [{"count": 2}]
         return "共有 2 位用户。"
 
-    def repair_sql(self, question, schema, sql, error):
+    def repair_sql(self, question, schema, sql, error, dialect):
         raise AssertionError("正确 SQL 不应进入修复节点")
 
 
@@ -69,7 +70,7 @@ def test_graph_has_explicit_v3_workflow(tmp_path, monkeypatch):
 
 
 class UnsafeLLM(FakeLLM):
-    def generate_sql(self, question, schema):
+    def generate_sql(self, question, schema, dialect):
         return "DELETE FROM users"
 
     def analyze(self, question, sql, rows):
@@ -96,10 +97,10 @@ def test_guard_rejects_before_database_execution(tmp_path, monkeypatch):
 
 
 class RepairingLLM(FakeLLM):
-    def generate_sql(self, question, schema):
+    def generate_sql(self, question, schema, dialect):
         return "SELECT username FROM users"
 
-    def repair_sql(self, question, schema, sql, error):
+    def repair_sql(self, question, schema, sql, error, dialect):
         assert "no such column: username" in error
         return "SELECT name FROM users ORDER BY id"
 
@@ -127,7 +128,7 @@ def test_execution_error_is_repaired_and_revalidated(tmp_path, monkeypatch):
 class NeverRepairingLLM(RepairingLLM):
     repair_calls = 0
 
-    def repair_sql(self, question, schema, sql, error):
+    def repair_sql(self, question, schema, sql, error, dialect):
         self.repair_calls += 1
         return "SELECT still_missing FROM users"
 
@@ -151,7 +152,7 @@ def test_reflection_stops_at_retry_limit(tmp_path, monkeypatch):
 
 
 class UnsafeRepairLLM(RepairingLLM):
-    def repair_sql(self, question, schema, sql, error):
+    def repair_sql(self, question, schema, sql, error, dialect):
         return "DROP TABLE users"
 
 

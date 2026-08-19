@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 
 from agent import DataPilot
 from database import DatabaseError
@@ -13,13 +12,14 @@ from llm import LLMError
 from sql_guard import SQLValidationError
 
 
-DEFAULT_DATABASE = Path(__file__).parent / "data" / "Chinook_Sqlite.sqlite"
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="DataPilot V0: natural language to SQL")
     parser.add_argument("question", help="用自然语言提出数据问题")
-    parser.add_argument("--database", type=Path, default=DEFAULT_DATABASE)
+    parser.add_argument(
+        "--database",
+        default=None,
+        help="SQLite 文件或 PostgreSQL URL；默认读取 DATABASE_URL",
+    )
     parser.add_argument("--show-rows", action="store_true", help="显示原始查询结果")
     return parser.parse_args()
 

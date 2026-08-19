@@ -48,3 +48,12 @@ def test_clamps_large_limit(guard):
 def test_rejects_extension_loading(guard):
     with pytest.raises(SQLValidationError, match="load_extension"):
         guard.require_valid("SELECT load_extension('unsafe')")
+
+
+def test_postgres_dialect_preserves_postgres_syntax():
+    guard = SQLGuard(max_rows=100, dialect="postgres")
+    sql = guard.require_valid(
+        "SELECT DATE_TRUNC('month', created_at) AS month FROM orders"
+    )
+    assert "DATE_TRUNC('MONTH', created_at)" in sql
+    assert sql.endswith("LIMIT 100")

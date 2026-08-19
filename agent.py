@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Any, Literal, NotRequired, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from database import DatabaseError, SQLiteDatabase
+from dotenv import load_dotenv
+
+from database import Database, DatabaseError, PostgresDatabase, SQLiteDatabase
 from llm import DeepSeekLLM
 from sql_guard import SQLGuard, SQLValidationError
 
@@ -37,12 +40,24 @@ class AgentState(TypedDict):
 
 
 class DataPilot:
-    def __init__(self, database_path: str | Path, max_retries: int = 3) -> None:
+    def __init__(
+        self,
+        database_target: str | Path | None = None,
+        max_retries: int = 3,
+    ) -> None:
         if max_retries < 0:
             raise ValueError("max_retries 不能小于 0。")
-        self.database = SQLiteDatabase(database_path)
+        load_dotenv()
+        target = database_target or os.getenv("DATABASE_URL")
+        if target is None:
+            target = Path(__file__).parent / "data" / "Chinook_Sqlite.sqlite"
+        self.database: Database
+        if str(target).startswith(("postgresql://", "postgres://")):
+            self.database = PostgresDatabase(str(target))
+        else:
+            self.database = SQLiteDatabase(target)
         self.llm = DeepSeekLLM()
-        self.sql_guard = SQLGuard(max_rows=100)
+        self.sql_guard = SQLGuard(max_rows=100, dialect=self.database.dialect)
         self.max_retries = max_retries
         self.graph = self._build_graph()
 
@@ -50,7 +65,11 @@ class DataPilot:
         return {"schema": self.database.schema()}
 
     def _generate_sql(self, state: AgentState) -> dict[str, str]:
-        return {"sql": self.llm.generate_sql(state["question"], state["schema"])}
+        return {
+            "sql": self.llm.generate_sql(
+                state["question"], state["schema"], self.database.dialect
+            )
+        }
 
     def _validate_sql(self, state: AgentState) -> dict[str, str]:
         result = self.sql_guard.validate(state["sql"])
@@ -88,6 +107,7 @@ class DataPilot:
             schema=state["schema"],
             sql=state["sql"],
             error=state["execution_error"],
+            dialect=self.database.dialect,
         )
         return {
             "sql": repaired_sql,
