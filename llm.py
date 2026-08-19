@@ -1,4 +1,4 @@
-"""DeepSeek client used by the V0 pipeline."""
+"""DeepSeek client used by the DataPilot pipeline."""
 
 from __future__ import annotations
 
@@ -66,6 +66,38 @@ class DeepSeekLLM:
         if not isinstance(sql, str) or not sql.strip():
             raise LLMError("模型响应中缺少 sql 字段。")
         return sql.strip()
+
+    def repair_sql(
+        self,
+        question: str,
+        schema: str,
+        sql: str,
+        error: str,
+    ) -> str:
+        result = self._json_completion(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "你是 SQLite SQL 修复专家。根据数据库 schema 和真实执行错误修复查询。"
+                        "保持用户原始意图，只能生成一条只读查询，不得修改数据库。"
+                        "只使用 schema 中存在的表和字段，不要解释。"
+                        '必须仅输出 JSON，例如：{"sql":"SELECT ... LIMIT 100"}。'
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"用户问题：{question}\n\n数据库 schema：\n{schema}\n\n"
+                        f"执行失败的 SQL：\n{sql}\n\n数据库错误：\n{error}"
+                    ),
+                },
+            ]
+        )
+        repaired_sql = result.get("sql")
+        if not isinstance(repaired_sql, str) or not repaired_sql.strip():
+            raise LLMError("模型响应中缺少修复后的 sql 字段。")
+        return repaired_sql.strip()
 
     def analyze(self, question: str, sql: str, rows: list[dict[str, Any]]) -> str:
         result = self._json_completion(

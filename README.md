@@ -1,6 +1,6 @@
 # DataPilot
 
-DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V2 在 LangGraph 工作流中加入 SQL Guard：
+DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V3 支持 SQL Reflection 自动修复：
 
 ```text
 自然语言问题 → 获取 Schema → DeepSeek 生成 SQL → 执行真实查询 → 生成中文答案
@@ -8,13 +8,18 @@ DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V2 在 LangG
 
 ```text
 START → get_schema → generate_sql → validate_sql
-                                      ├─ 通过 → execute_sql → analyze_result → END
-                                      └─ 拒绝 → reject → END
+                                      ├─ 拒绝 → reject → END
+                                      └─ 通过 → execute_sql
+                                                   ├─ 成功 → analyze_result → END
+                                                   ├─ 失败且可重试 → repair_sql
+                                                   │                  ↓
+                                                   │             validate_sql
+                                                   └─ 达到上限 → fail → END
 ```
 
-当前版本刻意不引入 Schema RAG、MCP 或 Web API。V2 使用 SQLGlot 将模型生成的 SQL 解析为 AST，只有单条只读查询可以进入数据库执行节点。
+当前版本刻意不引入 Schema RAG、MCP 或 Web API。V3 会把执行失败的 SQL、SQLite 错误、Schema 和原问题交给 DeepSeek 修复；每条修复 SQL 都必须重新通过 SQL Guard，默认最多修复 3 次。
 
-## V2 快速开始
+## V3 快速开始
 
 要求 Python 3.11+。
 
@@ -43,7 +48,7 @@ python main.py "销售额最高的5位客户是谁？" --show-rows
 python -m pytest
 ```
 
-## V2 文件
+## V3 文件
 
 - `main.py`：命令行入口
 - `agent.py`：LangGraph State、节点、边和 Text2SQL 工作流
@@ -64,3 +69,11 @@ V2 采用多层防护：
 - 数据库以只读 URI 打开，并启用 SQLite `query_only`
 
 SQL Guard 不能替代生产环境的最小权限数据库账号；迁移 PostgreSQL 时仍需为 Agent 配置只读用户。
+
+## SQL Reflection
+
+- 只捕获已经通过 SQL Guard 后发生的数据库执行错误
+- 修复提示包含用户问题、Schema、失败 SQL 和真实数据库错误
+- 修复 SQL 必须再次经过 AST 安全校验
+- 默认最多修复 3 次，达到上限后返回明确错误
+- 安全校验失败不会进入 Reflection，避免模型尝试绕过 Guard

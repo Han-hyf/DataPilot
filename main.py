@@ -40,6 +40,8 @@ def main() -> int:
         print("查询结果：")
         print(json.dumps(result.rows, ensure_ascii=False, indent=2, default=str))
         print()
+    if result.retry_count:
+        print(f"SQL 自动修复次数：{result.retry_count}\n")
     print(f"回答：\n{result.answer}")
     return 0
 
