@@ -1,6 +1,6 @@
 # DataPilot
 
-DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V4 已迁移到自建 PostgreSQL 电商经营分析数据库，并保留 SQLite/Chinook 作为轻量测试后端。
+DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V5 已通过 FastAPI 提供 REST 与 SSE 服务，后端使用自建 PostgreSQL 电商经营分析数据库，并保留 SQLite/Chinook 作为轻量测试后端。
 
 ```text
 自然语言问题 → 获取 Schema → DeepSeek 生成 SQL → 执行真实查询 → 生成中文答案
@@ -17,9 +17,9 @@ START → get_schema → generate_sql → validate_sql
                                                    └─ 达到上限 → fail → END
 ```
 
-V4 会根据数据库后端自动选择 PostgreSQL 或 SQLite 方言。执行失败时，系统会把 SQL、数据库错误、Schema 和原问题交给 DeepSeek 修复；每条修复 SQL 都必须重新通过对应方言的 SQL Guard。
+V5 会根据数据库后端自动选择 PostgreSQL 或 SQLite 方言。执行失败时，系统会把 SQL、数据库错误、Schema 和原问题交给 DeepSeek 修复；FastAPI SSE 接口会实时推送每个 LangGraph 节点的执行进度。
 
-## V4 快速开始
+## V5 快速开始
 
 要求 Python 3.11+。
 
@@ -49,6 +49,34 @@ python scripts/seed_ecommerce.py --users 100 --products 30 --orders 500 --reset
 python main.py "近6个月每个月的GMV是多少？" --show-rows
 ```
 
+启动 API：
+
+```powershell
+python -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
+```
+
+启动后可访问交互式 API 文档：`http://127.0.0.1:8000/docs`。
+
+同步查询：
+
+```powershell
+$body = @{question="各城市的用户数量排名前5是什么？"} | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/query `
+  -ContentType "application/json" -Body $body
+```
+
+## API
+
+| 方法 | 路径 | 作用 |
+| --- | --- | --- |
+| GET | `/api/health` | 检查 API 和数据库连接 |
+| GET | `/api/schema` | 获取当前数据库方言和 Schema |
+| POST | `/api/query` | 同步执行自然语言查询 |
+| POST | `/api/chat` | 同步查询别名 |
+| POST | `/api/chat/stream` | 通过 SSE 推送节点进度与结果 |
+
+SSE 事件类型包括 `progress`、`result`、`error` 和 `done`。进度事件对应 `get_schema`、`generate_sql`、`validate_sql`、`execute_sql`、`repair_sql` 和 `analyze_result` 节点。
+
 运行测试：
 
 ```powershell
@@ -62,7 +90,7 @@ $env:RUN_POSTGRES_TESTS="1"
 python -m pytest tests/test_postgres_integration.py
 ```
 
-## V4 数据模型
+## V5 数据模型
 
 ```text
 users → orders → order_items → products → categories
@@ -72,9 +100,10 @@ users → orders → order_items → products → categories
 
 业务口径：GMV 默认统计 `PAID`、`SHIPPED`、`COMPLETED`、`REFUNDED` 状态的订单；退款金额单独从 `refunds` 表汇总。
 
-## V4 文件
+## V5 文件
 
 - `main.py`：命令行入口
+- `api.py`：FastAPI REST/SSE 服务入口
 - `agent.py`：LangGraph State、节点、边和 Text2SQL 工作流
 - `llm.py`：DeepSeek API 调用
 - `database.py`：PostgreSQL/SQLite Schema 获取与只读查询执行
