@@ -23,7 +23,14 @@ class FakeGraph:
         assert stream_mode == "updates"
         assert version == "v2"
         updates = [
-            {"get_schema": {"schema": "TABLE users (id bigint)"}},
+            {"get_schema": {"full_schema": "TABLE users (id bigint)"}},
+            {
+                "retrieve_schema": {
+                    "schema": "TABLE users (id bigint)",
+                    "retrieved_tables": ("users",),
+                    "retrieval_fallback": False,
+                }
+            },
             {"generate_sql": {"sql": "SELECT COUNT(*) AS count FROM users"}},
             {"validate_sql": {"sql": "SELECT COUNT(*) AS count FROM users LIMIT 100"}},
             {"execute_sql": {"rows": [{"count": 2}], "execution_error": ""}},
@@ -44,6 +51,7 @@ class FakePilot:
             rows=[{"count": 2}],
             answer="共有 2 位用户。",
             retry_count=0,
+            retrieved_tables=("users",),
         )
 
 
@@ -76,6 +84,7 @@ def test_query_endpoints(client, path):
     assert response.status_code == 200
     assert response.json()["answer"] == "共有 2 位用户。"
     assert response.json()["rows"] == [{"count": 2}]
+    assert response.json()["retrieved_tables"] == ["users"]
 
 
 def test_question_validation(client):
@@ -92,6 +101,7 @@ def test_sse_stream_contains_progress_result_and_done(client):
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "event: progress" in response.text
     assert '"stage": "get_schema"' in response.text
+    assert '"stage": "retrieve_schema"' in response.text
     assert "event: result" in response.text
     assert '"answer":' in response.text
     assert "event: done" in response.text

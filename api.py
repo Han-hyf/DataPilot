@@ -1,4 +1,4 @@
-"""FastAPI HTTP and SSE interface for DataPilot V5."""
+"""FastAPI HTTP and SSE interface for DataPilot V6."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ class QueryResponse(BaseModel):
     rows: list[dict[str, Any]]
     answer: str
     retry_count: int
+    retrieved_tables: list[str]
 
     @classmethod
     def from_result(cls, result: QueryResult) -> "QueryResponse":
@@ -36,6 +37,7 @@ class QueryResponse(BaseModel):
             rows=result.rows,
             answer=result.answer,
             retry_count=result.retry_count,
+            retrieved_tables=list(result.retrieved_tables),
         )
 
 
@@ -58,7 +60,7 @@ def get_datapilot() -> DataPilot:
 
 app = FastAPI(
     title="DataPilot API",
-    version="0.5.0",
+    version="0.6.0",
     description="Natural-language analytics over a read-only database.",
 )
 
@@ -116,6 +118,7 @@ def chat(
 
 NODE_MESSAGES = {
     "get_schema": "已读取数据库 Schema",
+    "retrieve_schema": "已检索相关 Schema",
     "generate_sql": "已生成 SQL",
     "validate_sql": "SQL 安全校验完成",
     "execute_sql": "数据库查询完成",
@@ -173,6 +176,7 @@ def _stream_events(
             rows=state["rows"],
             answer=state["answer"],
             retry_count=state["retry_count"],
+            retrieved_tables=list(state["retrieved_tables"]),
         )
         yield ServerSentEvent(event="result", data=jsonable_encoder(result))
         yield ServerSentEvent(event="done", raw_data="[DONE]")

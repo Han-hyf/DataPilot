@@ -1,4 +1,4 @@
-"""LangGraph workflow for the DataPilot Text2SQL pipeline."""
+"""LangGraph workflow for the DataPilot Text2SQL and Schema RAG pipeline."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from database import Database, DatabaseError, PostgresDatabase, SQLiteDatabase
 from llm import DeepSeekLLM
+from schema_retriever import SchemaRetriever
 from sql_guard import SQLGuard, SQLValidationError
 
 
@@ -24,13 +25,17 @@ class QueryResult:
     rows: list[dict[str, Any]]
     answer: str
     retry_count: int
+    retrieved_tables: tuple[str, ...]
 
 
 class AgentState(TypedDict):
-    """Shared state passed between the V3 workflow nodes."""
+    """Shared state passed between the V6 workflow nodes."""
 
     question: str
+    full_schema: NotRequired[str]
     schema: NotRequired[str]
+    retrieved_tables: NotRequired[tuple[str, ...]]
+    retrieval_fallback: NotRequired[bool]
     sql: NotRequired[str]
     rows: NotRequired[list[dict[str, Any]]]
     answer: NotRequired[str]
@@ -57,12 +62,25 @@ class DataPilot:
         else:
             self.database = SQLiteDatabase(target)
         self.llm = DeepSeekLLM()
+        self.schema_retriever = SchemaRetriever(top_k=3)
         self.sql_guard = SQLGuard(max_rows=100, dialect=self.database.dialect)
         self.max_retries = max_retries
         self.graph = self._build_graph()
 
     def _get_schema(self, state: AgentState) -> dict[str, str]:
-        return {"schema": self.database.schema()}
+        return {"full_schema": self.database.schema()}
+
+    def _retrieve_schema(self, state: AgentState) -> dict[str, Any]:
+        result = self.schema_retriever.retrieve(
+            question=state["question"],
+            schema=state["full_schema"],
+            dialect=self.database.dialect,
+        )
+        return {
+            "schema": result.context,
+            "retrieved_tables": result.selected_tables,
+            "retrieval_fallback": result.used_fallback,
+        }
 
     def _generate_sql(self, state: AgentState) -> dict[str, str]:
         return {
@@ -136,6 +154,7 @@ class DataPilot:
     def _build_graph(self) -> CompiledStateGraph:
         builder = StateGraph(AgentState)
         builder.add_node("get_schema", self._get_schema)
+        builder.add_node("retrieve_schema", self._retrieve_schema)
         builder.add_node("generate_sql", self._generate_sql)
         builder.add_node("validate_sql", self._validate_sql)
         builder.add_node("execute_sql", self._execute_sql)
@@ -145,7 +164,8 @@ class DataPilot:
         builder.add_node("fail", self._fail)
 
         builder.add_edge(START, "get_schema")
-        builder.add_edge("get_schema", "generate_sql")
+        builder.add_edge("get_schema", "retrieve_schema")
+        builder.add_edge("retrieve_schema", "generate_sql")
         builder.add_edge("generate_sql", "validate_sql")
         builder.add_conditional_edges(
             "validate_sql",
@@ -182,4 +202,5 @@ class DataPilot:
             rows=state["rows"],
             answer=state["answer"],
             retry_count=state["retry_count"],
+            retrieved_tables=state["retrieved_tables"],
         )

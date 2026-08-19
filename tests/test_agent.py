@@ -36,9 +36,10 @@ def test_pipeline_uses_real_query_result(tmp_path, monkeypatch):
     assert result.sql == "SELECT COUNT(*) AS count FROM users LIMIT 100"
     assert result.answer == "共有 2 位用户。"
     assert result.retry_count == 0
+    assert result.retrieved_tables == ("users",)
 
 
-def test_graph_has_explicit_v3_workflow(tmp_path, monkeypatch):
+def test_graph_has_explicit_v6_workflow(tmp_path, monkeypatch):
     import sqlite3
 
     path = tmp_path / "sample.sqlite"
@@ -50,6 +51,7 @@ def test_graph_has_explicit_v3_workflow(tmp_path, monkeypatch):
 
     assert {
         "get_schema",
+        "retrieve_schema",
         "generate_sql",
         "validate_sql",
         "execute_sql",
@@ -59,7 +61,8 @@ def test_graph_has_explicit_v3_workflow(tmp_path, monkeypatch):
         "fail",
     } <= set(graph.nodes)
     edges = {(edge.source, edge.target) for edge in graph.edges}
-    assert ("get_schema", "generate_sql") in edges
+    assert ("get_schema", "retrieve_schema") in edges
+    assert ("retrieve_schema", "generate_sql") in edges
     assert ("generate_sql", "validate_sql") in edges
     assert ("validate_sql", "execute_sql") in edges
     assert ("validate_sql", "reject") in edges

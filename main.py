@@ -36,6 +36,8 @@ def main() -> int:
         return 1
 
     print(f"SQL:\n{result.sql}\n")
+    if result.retrieved_tables:
+        print(f"Schema 检索表：{', '.join(result.retrieved_tables)}\n")
     if args.show_rows:
         print("查询结果：")
         print(json.dumps(result.rows, ensure_ascii=False, indent=2, default=str))

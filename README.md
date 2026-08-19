@@ -1,13 +1,13 @@
 # DataPilot
 
-DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V5 已通过 FastAPI 提供 REST 与 SSE 服务，后端使用自建 PostgreSQL 电商经营分析数据库，并保留 SQLite/Chinook 作为轻量测试后端。
+DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V6 已加入 Schema RAG，在生成 SQL 前检索相关表、业务规则和 Few-shot SQL，并通过表关系图自动补齐 JOIN 路径。
 
 ```text
 自然语言问题 → 获取 Schema → DeepSeek 生成 SQL → 执行真实查询 → 生成中文答案
 ```
 
 ```text
-START → get_schema → generate_sql → validate_sql
+START → get_schema → retrieve_schema → generate_sql → validate_sql
                                       ├─ 拒绝 → reject → END
                                       └─ 通过 → execute_sql
                                                    ├─ 成功 → analyze_result → END
@@ -17,9 +17,9 @@ START → get_schema → generate_sql → validate_sql
                                                    └─ 达到上限 → fail → END
 ```
 
-V5 会根据数据库后端自动选择 PostgreSQL 或 SQLite 方言。执行失败时，系统会把 SQL、数据库错误、Schema 和原问题交给 DeepSeek 修复；FastAPI SSE 接口会实时推送每个 LangGraph 节点的执行进度。
+V6 会根据数据库后端自动选择 PostgreSQL 或 SQLite 方言。PostgreSQL 查询优先使用相关 Schema；低置信度问题和非 PostgreSQL 后端自动回退到完整 Schema。执行失败时仍会使用同一份检索上下文进行 Reflection。
 
-## V5 快速开始
+## V6 快速开始
 
 要求 Python 3.11+。
 
@@ -71,11 +71,11 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/query `
 | --- | --- | --- |
 | GET | `/api/health` | 检查 API 和数据库连接 |
 | GET | `/api/schema` | 获取当前数据库方言和 Schema |
-| POST | `/api/query` | 同步执行自然语言查询 |
+| POST | `/api/query` | 同步执行查询并返回命中的 Schema 表 |
 | POST | `/api/chat` | 同步查询别名 |
 | POST | `/api/chat/stream` | 通过 SSE 推送节点进度与结果 |
 
-SSE 事件类型包括 `progress`、`result`、`error` 和 `done`。进度事件对应 `get_schema`、`generate_sql`、`validate_sql`、`execute_sql`、`repair_sql` 和 `analyze_result` 节点。
+SSE 事件类型包括 `progress`、`result`、`error` 和 `done`。进度事件对应 `get_schema`、`retrieve_schema`、`generate_sql`、`validate_sql`、`execute_sql`、`repair_sql` 和 `analyze_result` 节点。
 
 运行测试：
 
@@ -90,7 +90,26 @@ $env:RUN_POSTGRES_TESTS="1"
 python -m pytest tests/test_postgres_integration.py
 ```
 
-## V5 数据模型
+## V6 Schema RAG
+
+当前数据库只有 7 张表，因此 V6 没有强行引入向量数据库，而是采用可解释的混合检索：
+
+1. 使用中文业务关键词与表语义描述召回候选表。
+2. 在外键关系图中计算候选表之间的最短路径。
+3. 补齐生成 JOIN 所需的中间表。
+4. 根据问题选择 GMV、退款率、净收入、客单价等业务规则。
+5. 按需加入最多两个 Few-shot SQL 示例。
+6. 没有可靠命中时回退完整 Schema，避免召回失败导致 SQL 无法生成。
+
+例如“退款金额最高的商品品类”会召回：
+
+```text
+refunds → orders → order_items → products → categories
+```
+
+当业务库扩展到约 30 张表以上时，再将第一步替换为 Qdrant dense/sparse hybrid retrieval；关系图补全、业务规则和回退机制可以继续复用。
+
+## V6 数据模型
 
 ```text
 users → orders → order_items → products → categories
@@ -100,7 +119,7 @@ users → orders → order_items → products → categories
 
 业务口径：GMV 默认统计 `PAID`、`SHIPPED`、`COMPLETED`、`REFUNDED` 状态的订单；退款金额单独从 `refunds` 表汇总。
 
-## V5 文件
+## V6 文件
 
 - `main.py`：命令行入口
 - `api.py`：FastAPI REST/SSE 服务入口
@@ -108,6 +127,7 @@ users → orders → order_items → products → categories
 - `llm.py`：DeepSeek API 调用
 - `database.py`：PostgreSQL/SQLite Schema 获取与只读查询执行
 - `sql_guard.py`：SQL AST 校验与结果行数限制
+- `schema_retriever.py`：Schema 语义检索、关系路径补全、业务规则与 Few-shot
 - `docker-compose.yml`：PostgreSQL 17 本地服务
 - `docker/postgres/init/`：表结构、索引和只读账号初始化
 - `scripts/seed_ecommerce.py`：确定性电商数据生成器
