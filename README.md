@@ -1,6 +1,6 @@
 # DataPilot
 
-DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V8 已加入可重复运行的 Text2SQL Evaluation，对 Baseline、Schema RAG 和 Reflection 做执行结果级对照；数据库能力仍通过只读 MCP 工具提供。
+DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V9 已支持 Docker Compose 一键启动 PostgreSQL、幂等数据初始化和 FastAPI；同时保留 MCP、Schema RAG、Reflection 与 Text2SQL Evaluation。
 
 ```text
 自然语言问题 → LangGraph → MCP Client → 只读 MCP Server → PostgreSQL
@@ -17,41 +17,50 @@ START → get_schema → retrieve_schema → generate_sql → validate_sql
                                                    └─ 达到上限 → fail → END
 ```
 
-V7 会根据数据库后端自动选择 PostgreSQL 或 SQLite 方言。MCP Server 在工具边界再次执行 SQL Guard，因此外部 Client 也不能绕过只读策略。PostgreSQL 查询仍优先使用相关 Schema，执行失败时使用同一份检索上下文进行 Reflection。
+系统会根据数据库后端自动选择 PostgreSQL 或 SQLite 方言。MCP Server 在工具边界再次执行 SQL Guard，因此外部 Client 也不能绕过只读策略。PostgreSQL 查询优先使用相关 Schema，执行失败时使用同一份检索上下文进行 Reflection。
 
-## V8 快速开始
+## V9 Docker 一键启动
 
-要求 Python 3.11+。
+要求 Docker Desktop 和 Docker Compose。复制环境变量并填写真实的 `DEEPSEEK_API_KEY`：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+一条命令构建镜像、启动 PostgreSQL、生成种子数据并启动 API：
+
+```powershell
+docker compose up -d --build
+```
+
+检查状态和日志：
+
+```powershell
+docker compose ps -a
+docker compose logs -f api
+```
+
+默认会生成 10,000 个用户、500 个商品、50,000 个订单及约 15 万条订单项。`seed` 是幂等的一次性容器：数据库已有用户数据时会成功退出而不重复写入。数据保存在命名卷中，普通 `docker compose down` 不会删除。
+
+服务启动后访问：
+
+- API 文档：`http://127.0.0.1:8000/docs`
+- 健康检查：`http://127.0.0.1:8000/api/health`
+
+停止服务：
+
+```powershell
+docker compose down
+```
+
+如需本机 Python 开发模式：
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-Copy-Item .env.example .env
-```
-
-在 `.env` 中填入自己的 `DEEPSEEK_API_KEY` 和本地 PostgreSQL 配置，然后启动数据库：
-
-```powershell
 docker compose up -d postgres
 python scripts/seed_ecommerce.py
-```
-
-默认会生成 10,000 个用户、500 个商品、50,000 个订单及约 15 万条订单项。重新生成数据时添加 `--reset`。如需先做快速验证，可以使用：
-
-```powershell
-python scripts/seed_ecommerce.py --users 100 --products 30 --orders 500 --reset
-```
-
-执行查询：
-
-```powershell
-python main.py "近6个月每个月的GMV是多少？" --show-rows
-```
-
-启动 API：
-
-```powershell
 python -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
 ```
 
@@ -62,8 +71,6 @@ python mcp_server.py
 ```
 
 默认 `DATAPILOT_USE_MCP=true`，Agent 使用官方 SDK 的进程内 transport，避免为每次查询额外启动子进程。设为 `false` 可回退到直接 Python 数据库适配器，便于故障排查。
-
-启动后可访问交互式 API 文档：`http://127.0.0.1:8000/docs`。
 
 同步查询：
 
@@ -165,7 +172,7 @@ refunds → orders → order_items → products → categories
 
 `create_mcp_server(database)` 支持依赖注入，测试使用临时 SQLite 和官方进程内 Client 完成真实 MCP 调用；生产环境使用 `.env` 中的只读 PostgreSQL URL。
 
-## V8 数据模型
+## V9 数据模型
 
 ```text
 users → orders → order_items → products → categories
@@ -175,7 +182,7 @@ users → orders → order_items → products → categories
 
 业务口径：GMV 默认统计 `PAID`、`SHIPPED`、`COMPLETED`、`REFUNDED` 状态的订单；退款金额单独从 `refunds` 表汇总。
 
-## V8 文件
+## V9 文件
 
 - `main.py`：命令行入口
 - `api.py`：FastAPI REST/SSE 服务入口
@@ -186,6 +193,9 @@ users → orders → order_items → products → categories
 - `mcp_client.py`：供 LangGraph 使用的 MCP 数据库适配器
 - `evaluation/dataset.py`：100 题分类评测集与标准 SQL
 - `evaluation/run.py`：消融配置、结果等价比较和 JSON/Markdown 报告
+- `Dockerfile`：非 root Python 3.12 API/seed 共用镜像
+- `docker-compose.yml`：PostgreSQL、幂等 seed、API 编排和健康检查
+- `scripts/ensure_seeded.py`：Compose 使用的幂等数据初始化入口
 - `sql_guard.py`：SQL AST 校验与结果行数限制
 - `schema_retriever.py`：Schema 语义检索、关系路径补全、业务规则与 Few-shot
 - `docker-compose.yml`：PostgreSQL 17 本地服务

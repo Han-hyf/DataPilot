@@ -20,5 +20,54 @@ services:
       retries: 10
     restart: unless-stopped
 
+  seed:
+    image: datapilot:local
+    environment:
+      DATABASE_ADMIN_URL: postgresql://${POSTGRES_USER:-datapilot_admin}:${POSTGRES_PASSWORD:-datapilot_admin}@postgres:5432/${POSTGRES_DB:-datapilot}
+      SEED_USERS: ${SEED_USERS:-10000}
+      SEED_PRODUCTS: ${SEED_PRODUCTS:-500}
+      SEED_ORDERS: ${SEED_ORDERS:-50000}
+      SEED_RANDOM_SEED: ${SEED_RANDOM_SEED:-20260819}
+    command: ["python", "-m", "scripts.ensure_seeded"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  api:
+    build:
+      context: .
+    image: datapilot:local
+    environment:
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?Set DEEPSEEK_API_KEY in .env}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+      DATABASE_URL: postgresql://${DATAPILOT_DB_USER:-datapilot_reader}:${DATAPILOT_DB_PASSWORD:-datapilot_reader}@postgres:5432/${POSTGRES_DB:-datapilot}
+      DATAPILOT_USE_MCP: ${DATAPILOT_USE_MCP:-true}
+    ports:
+      - "${DATAPILOT_API_PORT:-8000}:8000"
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
 volumes:
   datapilot_postgres_data:
