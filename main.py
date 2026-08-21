@@ -1,4 +1,4 @@
-"""Command-line entry point for DataPilot V9."""
+"""Command-line entry point for DataPilot V10."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from sql_guard import SQLValidationError
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="DataPilot V9: natural language to SQL")
+    parser = argparse.ArgumentParser(description="DataPilot V10: natural language to SQL")
     parser.add_argument("question", help="用自然语言提出数据问题")
     parser.add_argument(
         "--database",

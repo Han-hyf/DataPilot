@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="DataPilot — 用自然语言分析真实业务数据库">
+    <title>DataPilot · 智能数据分析</title>
+    <link rel="stylesheet" href="/assets/styles.css">
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="DataPilot 首页">
+        <span class="brand-mark"><span></span><span></span><span></span></span>
+        <span>DataPilot</span>
+      </a>
+      <div class="system-state" id="systemState">
+        <span class="state-dot"></span>
+        <span id="systemStateText">正在连接</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <p class="eyebrow">TEXT TO INSIGHT</p>
+        <h1>一句话，读懂你的业务数据</h1>
+        <p class="hero-copy">输入自然语言问题，DataPilot 会检索 Schema、生成并校验 SQL，查询真实数据库后给出结论。</p>
+      </section>
+
+      <section class="query-panel" aria-labelledby="queryTitle">
+        <h2 id="queryTitle" class="sr-only">提出数据问题</h2>
+        <form id="queryForm">
+          <label for="question">你想了解什么？</label>
+          <textarea id="question" name="question" rows="3" maxlength="2000" placeholder="例如：近 6 个月每个月的 GMV 是多少？" required></textarea>
+          <div class="query-actions">
+            <span class="shortcut">Ctrl / ⌘ + Enter 发送</span>
+            <button id="submitButton" type="submit">
+              <span id="submitText">开始分析</span>
+              <span class="button-arrow" aria-hidden="true">↗</span>
+            </button>
+          </div>
+        </form>
+        <div class="examples" aria-label="示例问题">
+          <span>试试这些</span>
+          <button type="button" class="example">各城市 GMV 排名</button>
+          <button type="button" class="example">哪三个品类退款金额最高？</button>
+          <button type="button" class="example">近 6 个月每月销售趋势</button>
+          <button type="button" class="example">北京和上海的客单价对比</button>
+        </div>
+      </section>
+
+      <section id="workspace" class="workspace hidden" aria-live="polite">
+        <aside class="trace-panel">
+          <div class="section-heading">
+            <span>执行轨迹</span>
+            <span id="elapsed" class="elapsed">0.0s</span>
+          </div>
+          <ol id="trace" class="trace"></ol>
+        </aside>
+
+        <div class="output-panel">
+          <article id="answerCard" class="answer-card hidden">
+            <div class="card-kicker">分析结论</div>
+            <p id="answer"></p>
+          </article>
+
+          <article id="sqlCard" class="data-card hidden">
+            <div class="card-header">
+              <div>
+                <span class="card-kicker">GENERATED SQL</span>
+                <h3>执行查询</h3>
+              </div>
+              <button id="copySql" type="button" class="ghost-button">复制 SQL</button>
+            </div>
+            <pre><code id="sql"></code></pre>
+            <div id="sqlMeta" class="sql-meta"></div>
+          </article>
+
+          <article id="resultCard" class="data-card hidden">
+            <div class="card-header">
+              <div>
+                <span class="card-kicker">QUERY RESULT</span>
+                <h3>原始数据</h3>
+              </div>
+              <span id="rowCount" class="row-count"></span>
+            </div>
+            <div class="table-wrap"><table id="resultTable"></table></div>
+          </article>
+
+          <article id="errorCard" class="error-card hidden">
+            <span>分析未完成</span>
+            <p id="errorMessage"></p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>LangGraph · MCP · PostgreSQL</span>
+      <a href="/docs">API Docs</a>
+    </footer>
+  </body>
+</html>

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.encoders import jsonable_encoder
+from fastapi.responses import FileResponse
 from fastapi.sse import EventSourceResponse, ServerSentEvent
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from agent import AgentState, DataPilot, QueryResult
@@ -60,9 +63,16 @@ def get_datapilot() -> DataPilot:
 
 app = FastAPI(
     title="DataPilot API",
-    version="0.9.0",
+    version="1.0.0",
     description="Natural-language analytics over a read-only database.",
 )
+WEB_DIR = Path(__file__).parent / "web"
+app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
+
+
+@app.get("/", response_class=FileResponse, include_in_schema=False)
+def web_app() -> Path:
+    return WEB_DIR / "index.html"
 
 
 def _http_error(exc: Exception) -> HTTPException:

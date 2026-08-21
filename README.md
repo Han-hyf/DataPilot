@@ -1,6 +1,6 @@
 # DataPilot
 
-DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V9 已支持 Docker Compose 一键启动 PostgreSQL、幂等数据初始化和 FastAPI；同时保留 MCP、Schema RAG、Reflection 与 Text2SQL Evaluation。
+DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V10 已提供可直接演示的 Web UI，可实时展示 LangGraph 执行轨迹、生成 SQL、原始查询结果与分析结论；系统同时支持 Docker、MCP、Schema RAG、Reflection 与 Text2SQL Evaluation。
 
 ```text
 自然语言问题 → LangGraph → MCP Client → 只读 MCP Server → PostgreSQL
@@ -19,7 +19,7 @@ START → get_schema → retrieve_schema → generate_sql → validate_sql
 
 系统会根据数据库后端自动选择 PostgreSQL 或 SQLite 方言。MCP Server 在工具边界再次执行 SQL Guard，因此外部 Client 也不能绕过只读策略。PostgreSQL 查询优先使用相关 Schema，执行失败时使用同一份检索上下文进行 Reflection。
 
-## V9 Docker 一键启动
+## V10 一键启动
 
 要求 Docker Desktop 和 Docker Compose。复制环境变量并填写真实的 `DEEPSEEK_API_KEY`：
 
@@ -44,6 +44,7 @@ docker compose logs -f api
 
 服务启动后访问：
 
+- Web UI：`http://127.0.0.1:8000/`
 - API 文档：`http://127.0.0.1:8000/docs`
 - 健康检查：`http://127.0.0.1:8000/api/health`
 
@@ -91,6 +92,17 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/query `
 | POST | `/api/chat/stream` | 通过 SSE 推送节点进度与结果 |
 
 SSE 事件类型包括 `progress`、`result`、`error` 和 `done`。进度事件对应 `get_schema`、`retrieve_schema`、`generate_sql`、`validate_sql`、`execute_sql`、`repair_sql` 和 `analyze_result` 节点。
+
+## V10 Web UI
+
+浏览器界面不需要 Node.js 或单独的前端容器，由 FastAPI 直接提供静态资源。主要能力：
+
+- 内置商业 BI 示例问题，支持 `Ctrl / ⌘ + Enter` 快捷发送
+- 通过 POST SSE 实时展示 Schema 检索、SQL 生成、校验、执行和修复进度
+- 展示最终分析、SQL、命中的 Schema 表、修复次数和原始结果表格
+- SQL 一键复制、空结果与错误状态处理
+- 响应式桌面/移动端布局
+- 所有动态数据通过 DOM `textContent` 渲染，避免模型输出或数据库值形成 HTML 注入
 
 运行测试：
 
@@ -172,7 +184,7 @@ refunds → orders → order_items → products → categories
 
 `create_mcp_server(database)` 支持依赖注入，测试使用临时 SQLite 和官方进程内 Client 完成真实 MCP 调用；生产环境使用 `.env` 中的只读 PostgreSQL URL。
 
-## V9 数据模型
+## V10 数据模型
 
 ```text
 users → orders → order_items → products → categories
@@ -182,7 +194,7 @@ users → orders → order_items → products → categories
 
 业务口径：GMV 默认统计 `PAID`、`SHIPPED`、`COMPLETED`、`REFUNDED` 状态的订单；退款金额单独从 `refunds` 表汇总。
 
-## V9 文件
+## V10 文件
 
 - `main.py`：命令行入口
 - `api.py`：FastAPI REST/SSE 服务入口
@@ -196,6 +208,9 @@ users → orders → order_items → products → categories
 - `Dockerfile`：非 root Python 3.12 API/seed 共用镜像
 - `docker-compose.yml`：PostgreSQL、幂等 seed、API 编排和健康检查
 - `scripts/ensure_seeded.py`：Compose 使用的幂等数据初始化入口
+- `web/index.html`：Web Demo 页面结构
+- `web/styles.css`：响应式暗色数据产品界面
+- `web/app.js`：POST SSE 解析、执行轨迹与结果渲染
 - `sql_guard.py`：SQL AST 校验与结果行数限制
 - `schema_retriever.py`：Schema 语义检索、关系路径补全、业务规则与 Few-shot
 - `docker-compose.yml`：PostgreSQL 17 本地服务

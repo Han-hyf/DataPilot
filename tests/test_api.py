@@ -69,6 +69,20 @@ def test_health(client):
     assert response.json() == {"status": "ok", "database": "postgres"}
 
 
+def test_web_ui_and_assets(client):
+    page = client.get("/")
+    script = client.get("/assets/app.js")
+    stylesheet = client.get("/assets/styles.css")
+
+    assert page.status_code == 200
+    assert "DataPilot" in page.text
+    assert 'id="queryForm"' in page.text
+    assert script.status_code == 200
+    assert "consumeSse" in script.text
+    assert stylesheet.status_code == 200
+    assert "--accent" in stylesheet.text
+
+
 def test_schema(client):
     response = client.get("/api/schema")
     assert response.status_code == 200
