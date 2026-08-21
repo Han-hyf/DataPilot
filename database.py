@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -21,6 +22,16 @@ class Database(Protocol):
     def schema(self) -> str: ...
 
     def execute(self, sql: str, max_rows: int = 100) -> list[dict[str, Any]]: ...
+
+
+def create_database(target: str | Path | None = None) -> Database:
+    """Create the configured database adapter without coupling it to the Agent."""
+    resolved = target or os.getenv("DATABASE_URL")
+    if resolved is None:
+        resolved = Path(__file__).parent / "data" / "Chinook_Sqlite.sqlite"
+    if str(resolved).startswith(("postgresql://", "postgres://")):
+        return PostgresDatabase(str(resolved))
+    return SQLiteDatabase(resolved)
 
 
 class SQLiteDatabase:

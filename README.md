@@ -1,9 +1,9 @@
 # DataPilot
 
-DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V6 已加入 Schema RAG，在生成 SQL 前检索相关表、业务规则和 Few-shot SQL，并通过表关系图自动补齐 JOIN 路径。
+DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V7 已将数据库能力封装为标准 MCP 工具，Agent 默认通过官方 MCP Client 调用只读 MCP Server；Schema RAG、SQL Guard 与 Reflection 工作流保持不变。
 
 ```text
-自然语言问题 → 获取 Schema → DeepSeek 生成 SQL → 执行真实查询 → 生成中文答案
+自然语言问题 → LangGraph → MCP Client → 只读 MCP Server → PostgreSQL
 ```
 
 ```text
@@ -17,9 +17,9 @@ START → get_schema → retrieve_schema → generate_sql → validate_sql
                                                    └─ 达到上限 → fail → END
 ```
 
-V6 会根据数据库后端自动选择 PostgreSQL 或 SQLite 方言。PostgreSQL 查询优先使用相关 Schema；低置信度问题和非 PostgreSQL 后端自动回退到完整 Schema。执行失败时仍会使用同一份检索上下文进行 Reflection。
+V7 会根据数据库后端自动选择 PostgreSQL 或 SQLite 方言。MCP Server 在工具边界再次执行 SQL Guard，因此外部 Client 也不能绕过只读策略。PostgreSQL 查询仍优先使用相关 Schema，执行失败时使用同一份检索上下文进行 Reflection。
 
-## V6 快速开始
+## V7 快速开始
 
 要求 Python 3.11+。
 
@@ -54,6 +54,14 @@ python main.py "近6个月每个月的GMV是多少？" --show-rows
 ```powershell
 python -m uvicorn api:app --host 127.0.0.1 --port 8000 --reload
 ```
+
+单独启动 stdio MCP Server（供 MCP Inspector 等客户端连接）：
+
+```powershell
+python mcp_server.py
+```
+
+默认 `DATAPILOT_USE_MCP=true`，Agent 使用官方 SDK 的进程内 transport，避免为每次查询额外启动子进程。设为 `false` 可回退到直接 Python 数据库适配器，便于故障排查。
 
 启动后可访问交互式 API 文档：`http://127.0.0.1:8000/docs`。
 
@@ -109,7 +117,17 @@ refunds → orders → order_items → products → categories
 
 当业务库扩展到约 30 张表以上时，再将第一步替换为 Qdrant dense/sparse hybrid retrieval；关系图补全、业务规则和回退机制可以继续复用。
 
-## V6 数据模型
+## V7 MCP 工具
+
+| 工具 | 作用 | 防护 |
+| --- | --- | --- |
+| `get_schema` | 返回方言、完整 Schema 和表清单 | 只读元数据 |
+| `execute_readonly_sql` | 执行单条查询并返回结构化行数据 | 服务端 SQL Guard、LIMIT 100、数据库只读权限 |
+| `get_table_statistics` | 返回白名单表的精确行数 | Schema 表名白名单、标识符引用 |
+
+`create_mcp_server(database)` 支持依赖注入，测试使用临时 SQLite 和官方进程内 Client 完成真实 MCP 调用；生产环境使用 `.env` 中的只读 PostgreSQL URL。
+
+## V7 数据模型
 
 ```text
 users → orders → order_items → products → categories
@@ -119,13 +137,15 @@ users → orders → order_items → products → categories
 
 业务口径：GMV 默认统计 `PAID`、`SHIPPED`、`COMPLETED`、`REFUNDED` 状态的订单；退款金额单独从 `refunds` 表汇总。
 
-## V6 文件
+## V7 文件
 
 - `main.py`：命令行入口
 - `api.py`：FastAPI REST/SSE 服务入口
 - `agent.py`：LangGraph State、节点、边和 Text2SQL 工作流
 - `llm.py`：DeepSeek API 调用
 - `database.py`：PostgreSQL/SQLite Schema 获取与只读查询执行
+- `mcp_server.py`：三个数据库 MCP 工具和 stdio Server 入口
+- `mcp_client.py`：供 LangGraph 使用的 MCP 数据库适配器
 - `sql_guard.py`：SQL AST 校验与结果行数限制
 - `schema_retriever.py`：Schema 语义检索、关系路径补全、业务规则与 Few-shot
 - `docker-compose.yml`：PostgreSQL 17 本地服务

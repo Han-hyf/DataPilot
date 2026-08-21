@@ -12,8 +12,10 @@ from langgraph.graph.state import CompiledStateGraph
 
 from dotenv import load_dotenv
 
-from database import Database, DatabaseError, PostgresDatabase, SQLiteDatabase
+from database import Database, DatabaseError, create_database
 from llm import DeepSeekLLM
+from mcp_client import MCPDatabase
+from mcp_server import create_mcp_server
 from schema_retriever import SchemaRetriever
 from sql_guard import SQLGuard, SQLValidationError
 
@@ -29,7 +31,7 @@ class QueryResult:
 
 
 class AgentState(TypedDict):
-    """Shared state passed between the V6 workflow nodes."""
+    """Shared state passed between the V7 workflow nodes."""
 
     question: str
     full_schema: NotRequired[str]
@@ -49,18 +51,24 @@ class DataPilot:
         self,
         database_target: str | Path | None = None,
         max_retries: int = 3,
+        use_mcp: bool | None = None,
     ) -> None:
         if max_retries < 0:
             raise ValueError("max_retries 不能小于 0。")
         load_dotenv()
-        target = database_target or os.getenv("DATABASE_URL")
-        if target is None:
-            target = Path(__file__).parent / "data" / "Chinook_Sqlite.sqlite"
-        self.database: Database
-        if str(target).startswith(("postgresql://", "postgres://")):
-            self.database = PostgresDatabase(str(target))
-        else:
-            self.database = SQLiteDatabase(target)
+        backend = create_database(database_target)
+        if use_mcp is None:
+            use_mcp = os.getenv("DATAPILOT_USE_MCP", "true").strip().lower() not in {
+                "0",
+                "false",
+                "no",
+                "off",
+            }
+        self.database: Database = (
+            MCPDatabase(create_mcp_server(backend), backend.dialect)
+            if use_mcp
+            else backend
+        )
         self.llm = DeepSeekLLM()
         self.schema_retriever = SchemaRetriever(top_k=3)
         self.sql_guard = SQLGuard(max_rows=100, dialect=self.database.dialect)

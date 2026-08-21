@@ -1,4 +1,4 @@
-"""FastAPI HTTP and SSE interface for DataPilot V6."""
+"""FastAPI HTTP and SSE interface for DataPilot V7."""
 
 from __future__ import annotations
 
@@ -60,7 +60,7 @@ def get_datapilot() -> DataPilot:
 
 app = FastAPI(
     title="DataPilot API",
-    version="0.6.0",
+    version="0.7.0",
     description="Natural-language analytics over a read-only database.",
 )
 
