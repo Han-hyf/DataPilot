@@ -52,6 +52,8 @@ class DataPilot:
         database_target: str | Path | None = None,
         max_retries: int = 3,
         use_mcp: bool | None = None,
+        use_schema_rag: bool = True,
+        llm: Any | None = None,
     ) -> None:
         if max_retries < 0:
             raise ValueError("max_retries 不能小于 0。")
@@ -69,8 +71,9 @@ class DataPilot:
             if use_mcp
             else backend
         )
-        self.llm = DeepSeekLLM()
+        self.llm = llm or DeepSeekLLM()
         self.schema_retriever = SchemaRetriever(top_k=3)
+        self.use_schema_rag = use_schema_rag
         self.sql_guard = SQLGuard(max_rows=100, dialect=self.database.dialect)
         self.max_retries = max_retries
         self.graph = self._build_graph()
@@ -79,6 +82,12 @@ class DataPilot:
         return {"full_schema": self.database.schema()}
 
     def _retrieve_schema(self, state: AgentState) -> dict[str, Any]:
+        if not self.use_schema_rag:
+            return {
+                "schema": state["full_schema"],
+                "retrieved_tables": (),
+                "retrieval_fallback": True,
+            }
         result = self.schema_retriever.retrieve(
             question=state["question"],
             schema=state["full_schema"],

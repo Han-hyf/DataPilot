@@ -1,6 +1,6 @@
 # DataPilot
 
-DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V7 已将数据库能力封装为标准 MCP 工具，Agent 默认通过官方 MCP Client 调用只读 MCP Server；Schema RAG、SQL Guard 与 Reflection 工作流保持不变。
+DataPilot 是一个逐步演进的智能数据分析 Agent。当前 V8 已加入可重复运行的 Text2SQL Evaluation，对 Baseline、Schema RAG 和 Reflection 做执行结果级对照；数据库能力仍通过只读 MCP 工具提供。
 
 ```text
 自然语言问题 → LangGraph → MCP Client → 只读 MCP Server → PostgreSQL
@@ -19,7 +19,7 @@ START → get_schema → retrieve_schema → generate_sql → validate_sql
 
 V7 会根据数据库后端自动选择 PostgreSQL 或 SQLite 方言。MCP Server 在工具边界再次执行 SQL Guard，因此外部 Client 也不能绕过只读策略。PostgreSQL 查询仍优先使用相关 Schema，执行失败时使用同一份检索上下文进行 Reflection。
 
-## V7 快速开始
+## V8 快速开始
 
 要求 Python 3.11+。
 
@@ -98,6 +98,44 @@ $env:RUN_POSTGRES_TESTS="1"
 python -m pytest tests/test_postgres_integration.py
 ```
 
+## V8 Evaluation
+
+评测集固定为 100 题：单表 20、聚合 20、JOIN 20、日期 15、复杂业务指标 15、危险或不可回答问题 10。90 道可回答题使用 Execution Accuracy：分别执行标准 SQL 和模型 SQL，比较规范化后的结果值，而不是比较 SQL 字符串；另外 10 题单独统计 Graceful Failure Accuracy。
+
+三个对照配置：
+
+| Profile | Schema 上下文 | Reflection |
+| --- | --- | --- |
+| `baseline` | 完整 Schema | 关闭 |
+| `rag` | Schema RAG | 关闭 |
+| `reflection` | Schema RAG | 最多修复 3 次 |
+
+先列出题库，不调用模型：
+
+```powershell
+python -m evaluation.run --list
+```
+
+每类抽取 1 题做低成本冒烟评测：
+
+```powershell
+python -m evaluation.run --sample-per-category 1
+```
+
+运行完整 100 题三组对照（约 300 次基础 SQL 生成调用，Reflection 失败时还会增加修复调用）：
+
+```powershell
+python -m evaluation.run
+```
+
+也可以只运行指定 Profile 或题目：
+
+```powershell
+python -m evaluation.run --profiles baseline rag --case-id simple-001
+```
+
+JSON 明细和 Markdown 汇总写入 `evaluation/results/`，该目录默认不提交，避免把一次模型运行结果误当成稳定结论。评测方法参考 Spider 采用的执行结果评估思想；只有实际完整运行得到的数字才应写入简历。
+
 ## V6 Schema RAG
 
 当前数据库只有 7 张表，因此 V6 没有强行引入向量数据库，而是采用可解释的混合检索：
@@ -127,7 +165,7 @@ refunds → orders → order_items → products → categories
 
 `create_mcp_server(database)` 支持依赖注入，测试使用临时 SQLite 和官方进程内 Client 完成真实 MCP 调用；生产环境使用 `.env` 中的只读 PostgreSQL URL。
 
-## V7 数据模型
+## V8 数据模型
 
 ```text
 users → orders → order_items → products → categories
@@ -137,7 +175,7 @@ users → orders → order_items → products → categories
 
 业务口径：GMV 默认统计 `PAID`、`SHIPPED`、`COMPLETED`、`REFUNDED` 状态的订单；退款金额单独从 `refunds` 表汇总。
 
-## V7 文件
+## V8 文件
 
 - `main.py`：命令行入口
 - `api.py`：FastAPI REST/SSE 服务入口
@@ -146,6 +184,8 @@ users → orders → order_items → products → categories
 - `database.py`：PostgreSQL/SQLite Schema 获取与只读查询执行
 - `mcp_server.py`：三个数据库 MCP 工具和 stdio Server 入口
 - `mcp_client.py`：供 LangGraph 使用的 MCP 数据库适配器
+- `evaluation/dataset.py`：100 题分类评测集与标准 SQL
+- `evaluation/run.py`：消融配置、结果等价比较和 JSON/Markdown 报告
 - `sql_guard.py`：SQL AST 校验与结果行数限制
 - `schema_retriever.py`：Schema 语义检索、关系路径补全、业务规则与 Few-shot
 - `docker-compose.yml`：PostgreSQL 17 本地服务
